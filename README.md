@@ -55,7 +55,7 @@ GeoJSON Output
 conda env create -f environment.yml
 conda activate tubule_segmentation
 
-download sam2 and openmidnight weights
+download sam2 (sam2.1_hiera_base_plus.pt) and openmidnight weights
 ```
 
 ## Data preparation
