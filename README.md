@@ -11,6 +11,7 @@ This pipeline predicts instance segmentation masks for kidney tubules by:
 3. **SAM2 Refinement**: Each seed is refined using SAM2 with box + mask prompts for precise boundaries
 
 ## Architecture
+```
 Input Image (1024x1024)
 │
 ├──► OpenMidnight ──► 1536-dim features (73x73)
@@ -38,6 +39,7 @@ Refined Instance Masks
 │
 ▼
 GeoJSON Output
+```
 
 ## Files
 
@@ -52,12 +54,11 @@ GeoJSON Output
 conda env create -f environment.yml
 conda activate tubule_segmentation
 
-mkdir -p checkpoints
-wget -O checkpoints/sam2.1_hiera_base_plus.pt \
-  https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt
+download sam2 and openmidnight weights
 
 ## Data preparation
-# Input Structure
+### Input Structure
+```
   data/
 ├── he-pt-data/
 │   ├── image1.png
@@ -73,15 +74,16 @@ wget -O checkpoints/sam2.1_hiera_base_plus.pt \
 ├── sil-dt-data/
 ├── tri-pt-data/
 └── tri-dt-data/
+```
 
 Stain types: he, pas, sil, tri
 pt = proximal tubule, dt = distal tubule
 Masks named: {image_name}_mask_proximal.png or {image_name}_mask_distal.png
 
-# Run Preprocessing
+### Run Preprocessing
 python data_preprocessing.py ./data ./data_combined
 
-# Output Structure
+### Output Structure
 data_combined/
 ├── images/
 │   ├── he_image1.png
@@ -95,7 +97,7 @@ data_combined/
 ## Training
 python train.py
 
-# Configuration
+### Configuration
 Edit constants at top of train.py:
 
 Parameter	Default	Description
@@ -107,11 +109,11 @@ LR	1e-4	Learning rate
 MAX_DISTANCE	50	Max distance for normalization
 VISUALIZE_EVERY	10	Save visualization every N batches
 
-# Outputs
+### Outputs
 checkpoints/best_distance_model.pt - Best model weights
 distance_outputs/ - Training visualizations
 
-# Training Details
+### Training Details
 Frozen backbones: OpenMidnight and SAM2 encoder weights are frozen
 Trainable parameters: ~2M (AlignmentBridge + DistanceHead only)
 Loss: MSE + peak-weighted MSE (emphasizes tubule centers)
@@ -121,7 +123,7 @@ Augmentation: Elastic deformation, color jitter, blur/noise
 python inference.py <input_image> <output_geojson>
 example: python inference.py patch.png output.geojson
 
-# Configuration
+### Configuration
 Edit constants at top of inference.py:
 
 Parameter	Default	Description
@@ -129,7 +131,7 @@ ERODE_ITER	5	Erosion iterations for instance separation
 MIN_AREA	30	Minimum instance area in pixels
 THRESH_FACTOR	0.8	Otsu threshold multiplier
 
-# Output Format
+### Output Format
 {
   "type": "FeatureCollection",
   "features": [
