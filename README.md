@@ -51,10 +51,12 @@ GeoJSON Output
 | `environment.yml` | Conda environment specification |
 
 ## Installation
+```
 conda env create -f environment.yml
 conda activate tubule_segmentation
 
 download sam2 and openmidnight weights
+```
 
 ## Data preparation
 ### Input Structure
@@ -75,11 +77,11 @@ download sam2 and openmidnight weights
 ├── tri-pt-data/
 └── tri-dt-data/
 ```
-
+```
 Stain types: he, pas, sil, tri
 pt = proximal tubule, dt = distal tubule
 Masks named: {image_name}_mask_proximal.png or {image_name}_mask_distal.png
-
+```
 ### Run Preprocessing
 python data_preprocessing.py ./data ./data_combined
 
@@ -100,6 +102,7 @@ data_combined/
 python train.py
 
 ### Configuration
+```
 Edit constants at top of train.py:
 
 Parameter	Default	Description
@@ -110,28 +113,37 @@ EPOCHS	30	Number of epochs
 LR	1e-4	Learning rate
 MAX_DISTANCE	50	Max distance for normalization
 VISUALIZE_EVERY	10	Save visualization every N batches
+```
 
 ### Outputs
+```
 checkpoints/best_distance_model.pt - Best model weights
 distance_outputs/ - Training visualizations
+```
 
 ### Training Details
+```
 Frozen backbones: OpenMidnight and SAM2 encoder weights are frozen
 Trainable parameters: ~2M (AlignmentBridge + DistanceHead only)
 Loss: MSE + peak-weighted MSE (emphasizes tubule centers)
 Augmentation: Elastic deformation, color jitter, blur/noise
+```
 
 ## Inference
+```
 python inference.py <input_image> <output_geojson>
 example: python inference.py patch.png output.geojson
+```
 
 ### Configuration
+```
 Edit constants at top of inference.py:
 
 Parameter	Default	Description
 ERODE_ITER	5	Erosion iterations for instance separation
 MIN_AREA	30	Minimum instance area in pixels
 THRESH_FACTOR	0.8	Otsu threshold multiplier
+```
 
 ### Output Format
 ```
