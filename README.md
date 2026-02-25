@@ -84,6 +84,7 @@ Masks named: {image_name}_mask_proximal.png or {image_name}_mask_distal.png
 python data_preprocessing.py ./data ./data_combined
 
 ### Output Structure
+```
 data_combined/
 ├── images/
 │   ├── he_image1.png
@@ -93,6 +94,7 @@ data_combined/
     ├── he_image1.png
     ├── pas_image1.png
     └── ...
+```
 
 ## Training
 python train.py
@@ -132,6 +134,7 @@ MIN_AREA	30	Minimum instance area in pixels
 THRESH_FACTOR	0.8	Otsu threshold multiplier
 
 ### Output Format
+```
 {
   "type": "FeatureCollection",
   "features": [
@@ -149,3 +152,4 @@ THRESH_FACTOR	0.8	Otsu threshold multiplier
     }
   ]
 }
+```
