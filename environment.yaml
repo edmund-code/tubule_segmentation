@@ -19,3 +19,4 @@ dependencies:
     - albumentations
     - huggingface_hub
     - sam2
+    - rasterio

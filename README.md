@@ -47,15 +47,17 @@ GeoJSON Output
 |------|-------------|
 | `data_preprocessing.py` | Resizes images and combines proximal/distal tubule masks into a unified dataset |
 | `train.py` | Trains the distance transform prediction model using frozen OpenMidnight + SAM2 backbones |
-| `inference.py` | Runs inference on a single image and outputs GeoJSON annotations |
-| `environment.yml` | Conda environment specification |
+| `patch_inference.py` | Runs inference on a single image patch and outputs GeoJSON annotations |
+| `wsi_inference.py` | Runs batched tile-based inference on whole slide images (WSI) |
+| `merge_segmentation.py` | Post-processing step to resolve artifact overlaps from the WSI tiling process |
+| `environment.yaml` | Conda environment specification |
 
 ## Installation
 ```
-conda env create -f environment.yml
+conda env create -f environment.yaml
 conda activate tubule_segmentation
 
-download sam2 (sam2.1_hiera_base_plus.pt) and openmidnight weights
+download sam2.1_hiera_base_plus.pt from Meta's SAM2 repository and put it in the checkpoints folder
 ```
 
 ## Data preparation
@@ -130,20 +132,58 @@ Augmentation: Elastic deformation, color jitter, blur/noise
 ```
 
 ## Inference
-```
-python inference.py <input_image> <output_geojson>
-example: python inference.py patch.png output.geojson
+
+> **Note on Hardware:** Both `patch_inference.py` and `wsi_inference.py` have `os.environ["CUDA_VISIBLE_DEVICES"] = "1"` hardcoded at the top of the file. You may need to change or remove this line to map to `0` or another ID depending on your system's GPU setup.
+
+### Patch Inference
+Run inference on a single image patch:
+```bash
+python patch_inference.py <input_image> <output_geojson>
+# example: python patch_inference.py patch.png output.geojson
 ```
 
-### Configuration
-```
-Edit constants at top of inference.py:
+#### Patch Configuration
+Edit constants at the top of `patch_inference.py`:
 
-Parameter	Default	Description
-ERODE_ITER	5	Erosion iterations for instance separation
-MIN_AREA	30	Minimum instance area in pixels
-THRESH_FACTOR	0.8	Otsu threshold multiplier
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ERODE_ITER` | 5 | Erosion iterations for instance separation |
+| `MIN_AREA` | 30 | Minimum instance area in pixels |
+| `THRESH_FACTOR`| 0.8 | Otsu threshold multiplier |
+
+
+### WSI Inference
+Run batched, tile-based inference on a Whole Slide Image (WSI):
+```bash
+python wsi_inference.py --input input_wsi.tif --output-dir wsi_tubule_output
 ```
+
+**Common WSI CLI Arguments:**
+* `--tile-size` (default: 512): Output size of the tile
+* `--overlap` (default: 256): Tile overlap in pixels
+* `--batch-size` (default: 8): Number of tiles to process in parallel
+* `--min-tissue` (default: 0.1): Minimum background threshold to process a tissue tile
+* `--visualize` (default: 0): Number of preview tile segmentations to save
+
+#### WSI Configuration
+Edit constants at the top of `wsi_inference.py`. This script shares `ERODE_ITER`, `MIN_AREA`, and `THRESH_FACTOR` with patch inference, plus the following:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MIN_TUBULE_AREA` | 2000 | Minimum tubule area (in pixels) for WSI area filtering |
+| `MAX_TUBULE_AREA` | 400000 | Maximum tubule area (in pixels) for WSI area filtering |
+
+
+## Post-Processing (WSI Only)
+Use `merge_segmentation.py` to resolve touching tile-edges and eliminate artifact overlaps resulting from the WSI tiling process:
+
+```bash
+python merge_segmentation.py -i wsi_tubule_output/tubules.geojson -o wsi_tubule_output/tubules_processed.geojson --merge 0.8 --water 0.3
+```
+
+**Common Post-Processing Arguments:**
+* `--merge` (default: 0.75): Area overlap ratio threshold required to union/merge adjacent features.
+* `--water` (default: 0.3): Overlap ratio required to split features using a watershed algorithm to separate complex touching boundaries.
 
 ### Output Format
 ```

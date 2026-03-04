@@ -1,0 +1,9 @@
+# Segmentation outputs and large files
+Ctrl_1A2/
+HUK1_COR1/
+HUK1_MED1/
+checkpoints/
+
+# Python cache files
+__pycache__/
+*.pyc

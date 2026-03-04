@@ -87,6 +87,8 @@ def process_file(args):
     if img is None:
         return False
     
+    # Use Nearest Neighbor for integer masks to preserve specific class values.
+    # Use Area interpolation for images to prevent moiré patterns when downsampling.
     interp = cv2.INTER_NEAREST if is_mask else cv2.INTER_AREA
     resized = cv2.resize(img, (size, size), interpolation=interp)
     
@@ -190,10 +192,14 @@ def combine_dataset(input_root, output_root, size):
             if pt_mask is not None and dt_mask is not None:
                 pt_bin = pt_mask > 127
                 dt_bin = dt_mask > 127
+                
+                # Compute mask intersection over union (IoU)
                 intersection = np.logical_and(pt_bin, dt_bin).sum()
                 union = np.logical_or(pt_bin, dt_bin).sum()
                 overlap = intersection / union if union > 0 else 0
                 
+                # If overlap is high, they likely represent the identical same structure 
+                # (annotations overlap). Use just one to avoid duplication/artifacts.
                 if overlap < OVERLAP_THRESHOLD:
                     combined_mask = np.maximum(pt_mask, dt_mask)
                 else:

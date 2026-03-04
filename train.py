@@ -203,6 +203,10 @@ class KidneyDistanceDataset(Dataset):
 # ============== Model ==============
 
 class AlignmentBridge(nn.Module):
+    """
+    Fuses high-dimensional features from OpenMidnight (1536-dim) and SAM2 (256-dim)
+    into a unified representation space for distance transform prediction.
+    """
     def __init__(self, midnight_dim=1536, sam_dim=256, out_dim=256):
         super().__init__()
         self.proj = nn.Sequential(
@@ -217,6 +221,10 @@ class AlignmentBridge(nn.Module):
 
 
 class DistanceHead(nn.Module):
+    """
+    Decodes the fused features from the AlignmentBridge into a 
+    single-channel predicted distance transform map using transpose convolutions.
+    """
     def __init__(self, in_dim=256):
         super().__init__()
         self.head = nn.Sequential(
@@ -238,6 +246,10 @@ class DistanceHead(nn.Module):
 
 
 class DistanceModel(nn.Module):
+    """
+    End-to-end network combining the AlignmentBridge and DistanceHead to 
+    predict distance maps from OpenMidnight and SAM2 feature embeddings.
+    """
     def __init__(self):
         super().__init__()
         self.bridge = AlignmentBridge()
@@ -260,7 +272,8 @@ class DistanceLoss(nn.Module):
     def forward(self, pred, target):
         mse_loss = F.mse_loss(pred, target)
         
-        # Weight centers more (where distance is high)
+        # We explicitly weight the centers more because tubules have distinct centers
+        # but ambiguous/touching boundaries. This forces the model to focus on the cores.
         weights = 1.0 + target * 4.0
         weighted_mse = (weights * (pred - target) ** 2).mean()
         
@@ -270,6 +283,9 @@ class DistanceLoss(nn.Module):
 # ============== Feature Extraction ==============
 
 def extract_midnight_features(midnight, images):
+    """
+    Extracts normalized patch tokens from the OpenMidnight (DINOv2) backbone.
+    """
     images_midnight = F.interpolate(images, size=(DINO_SIZE, DINO_SIZE), mode='bilinear', align_corners=False)
     tokens = midnight.forward_features(images_midnight)["x_norm_patchtokens"]
     B = images.shape[0]
@@ -278,6 +294,9 @@ def extract_midnight_features(midnight, images):
 
 
 def extract_sam2_features(sam2_enc, images):
+    """
+    Extracts multi-scale features from the SAM2 image encoder's feature pyramid.
+    """
     output = sam2_enc(images)
     
     for key in ["backbone_fpn", "vision_features", "feature_maps"]:
@@ -300,6 +319,12 @@ def extract_sam2_features(sam2_enc, images):
 # ============== Training ==============
 
 def main():
+    """
+    Main training loop for the DistanceModel.
+    - Loads frozen OpenMidnight and SAM2 backbones.
+    - Applies heavy data augmentation for histopathology images.
+    - Trains the alignment bridge and distance head.
+    """
     print("=" * 60)
     print("Distance Transform Training")
     print("=" * 60)
@@ -397,24 +422,30 @@ def main():
             masks = masks.cuda(non_blocking=True)
             targets = targets.float().cuda(non_blocking=True)
             
+            # 1. Forward Pass
             with torch.no_grad():
+                # Extract backbone features without gradients to save VRAM
                 m_feat = extract_midnight_features(midnight, images)
                 s_feat = extract_sam2_features(sam2_enc, images)
             
+            # Predict distance using AlignmentBridge + DistanceHead
             preds = model(m_feat, s_feat)
             
+            # 2. Compute Loss
             if preds.shape != targets.shape:
                 targets = F.interpolate(targets, size=preds.shape[-2:], mode='bilinear', align_corners=False)
             
             loss = criterion(preds, targets)
             
+            # 3. Backward Pass & Optimize
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Prevent exploding gradients
             optimizer.step()
             
             epoch_loss += loss.item()
             
+            # 4. Visualization & Logging
             if i % VISUALIZE_EVERY == 0:
                 model.eval()
                 with torch.no_grad():
