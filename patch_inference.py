@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 IMG_SIZE = 1024
 DINO_SIZE = 1022
 OUTPUT_SIZE = 256
-SAM2_CHECKPOINT = "/checkpoints/sam2.1_hiera_base_plus.pt"
+SAM2_CHECKPOINT = "checkpoints/sam2.1_hiera_base_plus.pt"
 MODEL_CFG = "configs/sam2.1/sam2.1_hiera_b+.yaml"
 DISTANCE_MODEL_PATH = "checkpoints/best_distance_model.pt"
 
