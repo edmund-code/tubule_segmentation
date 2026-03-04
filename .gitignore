@@ -1,7 +1,10 @@
 # Segmentation outputs and large files
 Ctrl_1A2/
 HUK1_COR1/
+HUK1_COR1_segmentations/
 HUK1_MED1/
+
+# Model checkpoints (too large for GitHub)
 checkpoints/
 
 # Python cache files
