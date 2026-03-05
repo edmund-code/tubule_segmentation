@@ -3,6 +3,8 @@ Ctrl_1A2/
 HUK1_COR1/
 HUK1_COR1_segmentations/
 HUK1_MED1/
+HUK1_MED_1/
+Ctrl_1A4/
 
 # Model checkpoints (too large for GitHub)
 checkpoints/

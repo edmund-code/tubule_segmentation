@@ -111,66 +111,85 @@ def merge_and_separate(input_path, output_path, merge_thresh, water_thresh):
     3. If overlap is large (>= merge_thresh), merges them into a single tubule.
     4. If overlap is moderate (>= water_thresh), attempts watershed separation.
     """
-    with open(input_path, 'r') as f:
-        data = json.load(f)
-
-    features_list = data.get('features', [])
-    total_count = len(features_list)
-    print(f"Filtering {total_count} features...")
-
+    import ijson
     valid_geoms, valid_props = [], []
-    for f in features_list:
-        poly = shape(f['geometry']).buffer(0)
-        if not is_tile_edge_artifact(poly, length_threshold=70, tolerance=5):
-            valid_geoms.append(poly)
-            valid_props.append(f.get('properties', {}))
+    total_count = 0
+
+    print("Loading and filtering features incrementally...")
+    with open(input_path, 'rb') as f:
+        for feat in ijson.items(f, 'features.item'):
+            total_count += 1
+            poly = shape(feat['geometry']).buffer(0)
+            if not is_tile_edge_artifact(poly, length_threshold=70, tolerance=5):
+                valid_geoms.append(poly)
+                valid_props.append(feat.get('properties', {}))
     
     removed_count = total_count - len(valid_geoms)
     print(f"Removed {removed_count} artifact features.")
     
     geoms, props = valid_geoms, valid_props
+    
+    if not geoms:
+        print("No valid features found.")
+        with open(output_path, 'w', encoding='utf-8') as out_f:
+            out_f.write('{"type":"FeatureCollection","features":[]}\n')
+        return
+
     indices = sorted(range(len(geoms)), key=lambda i: geoms[i].area, reverse=True)
     processed = [False] * len(geoms)
-    final_output = []
 
-    for i in indices:
-        if processed[i]: continue
-        current_geom = geoms[i]
-        
-    # Use a Spatial Tree (R-tree) for extremely fast O(log N) bounding-box nearest neighbor queries
+    print("Building spatial tree...")
     tree = STRtree(geoms)
-    neighbor_indices = tree.query(current_geom)
     
-    for n_idx in neighbor_indices:
-        n_idx = int(n_idx)
-        if n_idx == i or processed[n_idx]: continue
-        
-        neighbor_geom = geoms[n_idx]
-        
-        # Exact intersection geometry verification
-        if not current_geom.intersects(neighbor_geom): continue
-        
-        # Calculate intersection over the smaller geometry's area
-        inter_area = current_geom.intersection(neighbor_geom).area
-        smaller_area = min(current_geom.area, neighbor_geom.area)
-        overlap_ratio = inter_area / (smaller_area + 1e-9)
+    saved_count = 0
+    print(f"Processing and streaming out features to {output_path}...")
+    with open(output_path, 'w', encoding='utf-8') as out_f:
+        out_f.write('{"type":"FeatureCollection","features":[\n')
+        first_feature = True
 
-        if overlap_ratio >= merge_thresh:
-            # Overlap is too high, assume it is the same tubule
-            current_geom = current_geom.union(neighbor_geom).buffer(0)
-            processed[n_idx] = True
-        elif overlap_ratio < water_thresh and overlap_ratio > 0.001:
-            # Overlap is moderate, attempt to separate them via watershed prediction
-            res_a, res_b = resolve_touching_pair(current_geom, neighbor_geom, res=0.5)
-            current_geom, geoms[n_idx] = res_a, res_b  
+        for i in indices:
+            if processed[i]: continue
+            current_geom = geoms[i]
+            
+            # Extremely fast O(log N) bounding-box nearest neighbor queries
+            neighbor_indices = tree.query(current_geom)
+            
+            for n_idx in neighbor_indices:
+                n_idx = int(n_idx)
+                if n_idx == i or processed[n_idx]: continue
+                
+                neighbor_geom = geoms[n_idx]
+                
+                # Exact intersection geometry verification
+                if not current_geom.intersects(neighbor_geom): continue
+                
+                # Calculate intersection over the smaller geometry's area
+                inter_area = current_geom.intersection(neighbor_geom).area
+                smaller_area = min(current_geom.area, neighbor_geom.area)
+                overlap_ratio = inter_area / (smaller_area + 1e-9)
 
-        final_output.append({"type": "Feature", "geometry": mapping(current_geom), "properties": props[i]})
-        processed[i] = True
+                if overlap_ratio >= merge_thresh:
+                    # Overlap is too high, assume it is the same tubule
+                    current_geom = current_geom.union(neighbor_geom).buffer(0)
+                    processed[n_idx] = True
+                elif overlap_ratio < water_thresh and overlap_ratio > 0.001:
+                    # Overlap is moderate, attempt to separate them via watershed prediction
+                    res_a, res_b = resolve_touching_pair(current_geom, neighbor_geom, res=0.5)
+                    current_geom, geoms[n_idx] = res_a, res_b  
 
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump({"type": "FeatureCollection", "features": final_output}, f)
+            out_feat = {"type": "Feature", "geometry": mapping(current_geom), "properties": props[i]}
+            
+            # Write feature
+            separator = ",\n" if not first_feature else ""
+            out_f.write(separator + json.dumps(out_feat))
+            first_feature = False
+            
+            processed[i] = True
+            saved_count += 1
+
+        out_f.write('\n]}\n')
     
-    print(f"✓ Success: Saved {len(final_output)} features.")
+    print(f"✓ Success: Saved {saved_count} features.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

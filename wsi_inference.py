@@ -239,76 +239,23 @@ def refine_with_sam2(image, rough_masks, sam2_predictor):
     return refined, scores
 
 
-def save_geojson_safe(geojson_data: dict, output_path: str) -> bool:
-    """
-    Safely save GeoJSON with validation.
-    Writes to temp file first, then moves to final location.
-    """
-    import tempfile
-    import shutil
-    
+def save_geojson_streaming(features, output_path):
+    """Writes GeoJSON features one-by-one to avoid memory exhaustion."""
     output_path = Path(output_path)
     
-    # Validate structure before saving
-    print(f"   Validating {len(geojson_data['features'])} features...")
-    
-    valid_features = []
-    for i, feature in enumerate(geojson_data['features']):
-        try:
-            coords = feature['geometry']['coordinates'][0]
-            
-            # Check each coordinate is [x, y] only (2D)
-            valid_coords = []
-            for pt in coords:
-                if len(pt) >= 2:
-                    # Force 2D - take only first two values
-                    valid_coords.append([float(pt[0]), float(pt[1])])
-                else:
-                    print(f"   Warning: Feature {i} has invalid coordinate: {pt}")
-                    continue
-            
-            # Ensure closed polygon
-            if valid_coords and valid_coords[0] != valid_coords[-1]:
-                valid_coords.append([valid_coords[0][0], valid_coords[0][1]])
-            
-            # Need at least 4 points
-            if len(valid_coords) < 4:
-                print(f"   Warning: Feature {i} has too few coordinates ({len(valid_coords)}), skipping")
-                continue
-            
-            # Update feature with validated coordinates
-            feature['geometry']['coordinates'] = [valid_coords]
-            valid_features.append(feature)
-            
-        except Exception as e:
-            print(f"   Warning: Feature {i} validation failed: {e}")
-            continue
-    
-    print(f"   Valid features: {len(valid_features)} / {len(geojson_data['features'])}")
-    
-    geojson_data['features'] = valid_features
-    
-    # Write to temp file first
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.geojson', delete=False) as tmp:
-            json.dump(geojson_data, tmp)
-            tmp_path = tmp.name
+    with open(output_path, 'w', encoding='utf-8') as f:
+        # Write the GeoJSON Header
+        f.write('{"type":"FeatureCollection","features":[\n')
         
-        # Verify temp file is valid JSON
-        with open(tmp_path, 'r') as f:
-            _ = json.load(f)  # This will raise if invalid
-        
-        # Move to final location
-        shutil.move(tmp_path, output_path)
-        print(f"   ✓ Saved: {output_path}")
-        return True
-        
-    except Exception as e:
-        print(f"   ✗ Failed to save: {e}")
-        if Path(tmp_path).exists():
-            Path(tmp_path).unlink()
-        return False
-
+        for i, feat in enumerate(features):
+            # Add a comma between features, but not before the first or after the last
+            separator = ",\n" if i > 0 else ""
+            f.write(separator + json.dumps(feat))
+            
+        # Write the GeoJSON Footer
+        f.write('\n]}')
+    
+    print(f"   ✓ Successfully streamed {len(features)} features to {output_path}")
 
 def masks_to_geojson_features(masks, scores, offset_x=0, offset_y=0, id_prefix="",
                                min_area=MIN_TUBULE_AREA, max_area=MAX_TUBULE_AREA):
@@ -651,14 +598,9 @@ class WSITubuleSegmenter:
         print(f"Background tiles skipped: {len(tiles_info) - len(tissue_tiles)}")
         print(f"Total tubules found: {len(all_features)}")
         
-        # Save GeoJSON
+        # Save GeoJSON using the streaming method
         geojson_path = output_path / "tubules.geojson"
-        geojson_data = {
-            "type": "FeatureCollection",
-            "features": all_features
-        }
-        
-        save_geojson_safe(geojson_data, geojson_path)
+        save_geojson_streaming(all_features, geojson_path)
         
         return all_features
     
