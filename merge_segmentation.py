@@ -1,4 +1,4 @@
-"python merge_segmentation.py -i HUK1_COR1_segmentations/tubules.geojson -o HUK1_COR1_segmentations/tubules_merged.geojson -t 0.8"
+"python merge_segmentation.py -i HUK1_MED_1/tubules.geojson -o HUK1_MED_1/tubules_processed.geojson"
 
 import json
 import argparse
@@ -11,6 +11,7 @@ from shapely.strtree import STRtree
 
 import rasterio
 from rasterio import features
+from tqdm import tqdm
 from skimage.segmentation import watershed
 from scipy import ndimage as sho
 
@@ -117,7 +118,7 @@ def merge_and_separate(input_path, output_path, merge_thresh, water_thresh):
 
     print("Loading and filtering features incrementally...")
     with open(input_path, 'rb') as f:
-        for feat in ijson.items(f, 'features.item'):
+        for feat in tqdm(ijson.items(f, 'features.item'), desc="Loading features"):
             total_count += 1
             poly = shape(feat['geometry']).buffer(0)
             if not is_tile_edge_artifact(poly, length_threshold=70, tolerance=5):
@@ -143,11 +144,18 @@ def merge_and_separate(input_path, output_path, merge_thresh, water_thresh):
     
     saved_count = 0
     print(f"Processing and streaming out features to {output_path}...")
+    
+    import decimal
+    def custom_serializer(obj):
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        raise TypeError(f"Type {type(obj)} not serializable")
+
     with open(output_path, 'w', encoding='utf-8') as out_f:
         out_f.write('{"type":"FeatureCollection","features":[\n')
         first_feature = True
 
-        for i in indices:
+        for i in tqdm(indices, desc="Processing features"):
             if processed[i]: continue
             current_geom = geoms[i]
             
@@ -181,7 +189,7 @@ def merge_and_separate(input_path, output_path, merge_thresh, water_thresh):
             
             # Write feature
             separator = ",\n" if not first_feature else ""
-            out_f.write(separator + json.dumps(out_feat))
+            out_f.write(separator + json.dumps(out_feat, default=custom_serializer))
             first_feature = False
             
             processed[i] = True
